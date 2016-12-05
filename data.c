@@ -1093,7 +1093,12 @@ int do_write_data_page(struct f2fs_io_info *fio)
 	} else {
 		if(FS_COMPR_FL&F2FS_I(inode)->i_flags && S_ISREG(inode->i_mode))
 		{
-			write_data_page_dedupe(&dn, fio);
+            if(fio->type == DEDUPE_DATA){
+                fio->type = DATA;
+                write_data_page(&dn,fio);
+            }else{
+                write_data_page_dedupe(&dn, fio);
+            }
 		}
 		else
 		{

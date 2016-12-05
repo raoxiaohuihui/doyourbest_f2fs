@@ -656,6 +656,39 @@ out:
 	f2fs_put_page(page, 1);
 }
 
+static void move_data_page_dedupe(struct inode *inode, block_t bidx, int gc_type, enum page_type p_type)
+{
+	struct page *page;
+
+	page = get_lock_data_page(inode, bidx, true);
+	if (IS_ERR(page))
+		return;
+
+	if (gc_type == BG_GC) {
+		if (PageWriteback(page))
+			goto out;
+		set_page_dirty(page);
+		set_cold_data(page);
+	} else {
+		struct f2fs_io_info fio = {
+			.sbi = F2FS_I_SB(inode),
+			.type = p_type,
+			.rw = WRITE_SYNC,
+			.page = page,
+			.encrypted_page = NULL,
+		};
+		set_page_dirty(page);
+		f2fs_wait_on_page_writeback(page, DATA);
+		if (clear_page_dirty_for_io(page))
+			inode_dec_dirty_pages(inode);
+		set_cold_data(page);
+		do_write_data_page(&fio);
+		clear_cold_data(page);
+	}
+out:
+	f2fs_put_page(page, 1);
+
+}
 /*
  * This function tries to get parent node of victim data block, and identifies
  * data block validity. If the block is valid, copy that with cold status and
@@ -769,9 +802,9 @@ static int gc_data_segment_dedupe(struct f2fs_sb_info *sbi, struct f2fs_summary 
 	int phase = 0;
 	u8 hash[16];
 	struct dedupe* dedupe = NULL;
-	struct list_head  *summary_list_head;
-	struct summary_list_node* tmp = NULL;
-	struct list_head* pos = NULL;
+	//struct list_head  *summary_list_head;
+	//struct summary_list_node* tmp = NULL;
+	//struct list_head* pos = NULL;
 
 
 	start_addr = START_BLOCK(sbi, segno);
@@ -832,19 +865,8 @@ next_step:
 			f2fs_dedupe_calc_hash(data_page, hash, &sbi->dedupe_info);
 			spin_lock(&sbi->dedupe_info.lock);
 			dedupe = f2fs_dedupe_search(hash, &sbi->dedupe_info);
+            spin_unlock(&sbi->dedupe_info.lock);
 
-			if(dedupe)
-			{
-				summary_list_head = dedupe->summary_list_head;
-				list_for_each(pos,summary_list_head){
-
-					tmp = list_entry(pos,struct summary_list_node,list);
-					gc_data_segment(sbi, &(tmp->summary), gc_list, segno, gc_type);
-				}
-
-				spin_unlock(&sbi->dedupe_info.lock);
-
-			}
 
 			f2fs_put_page(data_page, 0);
 			add_gc_inode(gc_list, inode);
@@ -856,10 +878,19 @@ next_step:
 		if (inode) {
 			start_bidx = start_bidx_of_node(nofs, F2FS_I(inode))
 								+ ofs_in_node;
-			if (f2fs_encrypted_inode(inode) && S_ISREG(inode->i_mode))
+            if (f2fs_encrypted_inode(inode) && S_ISREG(inode->i_mode)){
 				move_encrypted_block(inode, start_bidx);
-			else
-				move_data_page(inode, start_bidx, gc_type);
+            }else{
+                if(!dedupe){
+				    move_data_page(inode, start_bidx, gc_type);
+                }else{
+                    if((dedupe->ref) > 10){
+                        move_data_page_dedupe(inode,start_bidx,gc_type,DEDUPE_DATA_REF);
+                    }else{
+                        move_data_page_dedupe(inode,start_bidx,gc_type,DEDUPE_DATA);
+                    }
+                }
+            }
 			stat_inc_data_blk_count(sbi, 1, gc_type);
 		}
 	}
@@ -919,7 +950,7 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi, unsigned int segno,
 		nfree = gc_node_segment(sbi, sum->entries, segno, gc_type);
 		break;
 	case SUM_TYPE_DATA:
-		nfree = gc_data_segment(sbi, sum->entries, gc_list,
+		nfree = gc_data_segment_dedupe(sbi, sum->entries, gc_list,
 							segno, gc_type);
 		break;
 	}

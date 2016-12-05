@@ -588,6 +588,7 @@ enum {
 	CURSEG_COLD_NODE,	/* indirect node blocks */
 	NO_CHECK_TYPE,
 	CURSEG_DIRECT_IO,	/* to use for the direct IO path */
+    CURSEG_DEDUPE_REF_DATA, /*the ref count is more than 10*/
 };
 
 struct flush_cmd {
@@ -680,6 +681,8 @@ enum page_type {
 	INMEM_DROP,
 	IPU,
 	OPU,
+    DEDUPE_DATA,
+    DEDUPE_DATA_REF,
 };
 
 struct f2fs_io_info {
@@ -828,7 +831,7 @@ struct f2fs_sb_info {
 	struct mutex umount_mutex;
 	unsigned int shrinker_run_no;
 	struct dedupe_info dedupe_info;
-	
+
 };
 
 /*

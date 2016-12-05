@@ -1341,6 +1341,24 @@ static int __get_segment_type(struct page *page, enum page_type p_type)
 	return __get_segment_type_6(page, p_type);
 }
 
+static int __get_segment_type_dedupe(struct page *page, enum page_type p_type)
+{
+    if(p_type == DEDUPE_DATA){
+        return CURSEG_DEDUPE_REF_DATA;
+    }else{
+        switch (F2FS_P_SB(page)->active_logs) {
+	    case 2:
+		    return __get_segment_type_2(page, p_type);
+	    case 4:
+		    return __get_segment_type_4(page, p_type);
+        }
+	    /* NR_CURSEG_TYPE(6) logs by default */
+	    f2fs_bug_on(F2FS_P_SB(page),
+		    F2FS_P_SB(page)->active_logs != NR_CURSEG_TYPE);
+	    return __get_segment_type_6(page, p_type);
+    }
+}
+
 void allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 		block_t old_blkaddr, block_t *new_blkaddr,
 		struct f2fs_summary *sum, int type)
@@ -1500,18 +1518,29 @@ static void do_write_page(struct f2fs_summary *sum, struct f2fs_io_info *fio)
 
 static void do_write_page_dedupe(struct f2fs_summary *sum, struct f2fs_io_info *fio)
 {
-	int type = __get_segment_type(fio->page, fio->type);
+	int type = __get_segment_type_dedupe(fio->page, fio->type);
 
 	int ret = 0;
+    if(type == CURSEG_DEDUPE_REF_DATA){
 
-	ret = allocate_data_block_dedupe(fio->sbi, fio->page, fio->blk_addr,
-						&fio->blk_addr, sum, type);
-	if(!ret)
-	{
-		set_page_writeback(fio->page);
-		/* writeout dirty page into bdev */
-		f2fs_submit_page_mbio(fio);
-	}
+	    allocate_data_block(fio->sbi, fio->page, fio->blk_addr,
+						    &fio->blk_addr, sum, type);
+
+	    /* writeout dirty page into bdev */
+	    f2fs_submit_page_mbio(fio);
+    }else{
+
+	    ret = allocate_data_block_dedupe(fio->sbi, fio->page, fio->blk_addr,
+			    			&fio->blk_addr, sum, type);
+	    if(!ret)
+	    {
+		    set_page_writeback(fio->page);
+		    /* writeout dirty page into bdev */
+		    f2fs_submit_page_mbio(fio);
+	    }
+
+    }
+
 }
 
 void write_meta_page(struct f2fs_sb_info *sbi, struct page *page)
