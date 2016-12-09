@@ -1343,7 +1343,7 @@ static int __get_segment_type(struct page *page, enum page_type p_type)
 
 static int __get_segment_type_dedupe(struct page *page, enum page_type p_type)
 {
-    if(p_type == DEDUPE_DATA){
+    if(p_type == DEDUPE_DATA_REF){
         return CURSEG_DEDUPE_REF_DATA;
     }else{
         switch (F2FS_P_SB(page)->active_logs) {
@@ -1418,7 +1418,8 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 	u8 hash[16];
 	struct dedupe* dedupe = NULL;
 	//struct summary_list_node s_list_node;
-
+    struct summary_table_row summary_table[SUMMARY_TABLE_SIZE] = sbi->dedupe_info.summary_table;
+    int sum_col;
 	type = direct_io ? CURSEG_WARM_DATA : type;
 
 	curseg = CURSEG_I(sbi, type);
@@ -1445,6 +1446,16 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 	}
 	else
 	{
+        for(sum_col=0;sum_col < SUMMARY_TABLE_SIZE;sum_col++){
+            if(summary_tables[i].flag != 1 ){
+                summary_tables[i].flag = 1;
+                summary_tables[i].hash = hash;
+                summary_tables[i].nid = sum->nid;
+                summary_tables[i].ofs_in_node = sum->ofs_in_node;
+                break;
+            }
+
+        }
 		dedupe->ref++;
 		//s_list_node.summary = *sum;
 		//list_add_tail(&(s_list_node.list),dedupe->summary_list_head);

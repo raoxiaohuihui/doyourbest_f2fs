@@ -4,6 +4,7 @@
 #define F2FS_BLOOM_FILTER 1
 //#define F2FS_NO_HASH 1
 
+#define SUMMARY_TABLE_SIZE 1000
 #define DEDUPE_PER_BLOCK (PAGE_CACHE_SIZE/sizeof(struct dedupe))
 #include <linux/f2fs_fs.h>
 #include <linux/list.h>
@@ -15,8 +16,17 @@ struct dedupe
 	block_t addr;
 	int ref;
 	u8 hash[16];
-	struct list_head *summary_list_head;
-	
+	//struct list_head *summary_list_head;
+
+};
+
+struct summary_table_row
+{
+    u8 hash[16];
+    __le32 nid;
+    __le16 ofs_in_node;
+    int flag;
+
 };
 
 struct dedupe_info
@@ -40,6 +50,7 @@ struct dedupe_info
 	spinlock_t lock;
 	struct crypto_shash *tfm;
 	unsigned int crypto_shash_descsize;
+    struct summary_table_row summary_table[SUMMARY_TABLE_SIZE];
 };
 
 /* a summary list node */
@@ -48,6 +59,7 @@ struct summary_list_node
  	struct f2fs_summary summary;
 	struct list_head list;
  };
+
 
 
 extern int f2fs_dedupe_calc_hash(struct page *p, u8 hash[], struct dedupe_info *dedupe_info);
