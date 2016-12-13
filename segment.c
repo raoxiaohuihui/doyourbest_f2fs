@@ -1418,8 +1418,10 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 	u8 hash[16];
 	struct dedupe* dedupe = NULL;
 	//struct summary_list_node s_list_node;
-    struct summary_table_row summary_table[SUMMARY_TABLE_SIZE] = sbi->dedupe_info.summary_table;
+    struct summary_table_row *summary_table;
     int sum_col;
+    summary_table =  sbi->dedupe_info.summary_table;
+
 	type = direct_io ? CURSEG_WARM_DATA : type;
 
 	curseg = CURSEG_I(sbi, type);
@@ -1447,11 +1449,11 @@ int allocate_data_block_dedupe(struct f2fs_sb_info *sbi, struct page *page,
 	else
 	{
         for(sum_col=0;sum_col < SUMMARY_TABLE_SIZE;sum_col++){
-            if(summary_tables[i].flag != 1 ){
-                summary_tables[i].flag = 1;
-                summary_tables[i].hash = hash;
-                summary_tables[i].nid = sum->nid;
-                summary_tables[i].ofs_in_node = sum->ofs_in_node;
+            if(summary_table[sum_col].flag != 1 ){
+                summary_table[sum_col].flag = 1;
+                memcpy(summary_table[sum_col].hash,hash,sbi->dedupe_info.digest_len);
+                summary_table[sum_col].nid = sum->nid;
+                summary_table[sum_col].ofs_in_node = sum->ofs_in_node;
                 break;
             }
 

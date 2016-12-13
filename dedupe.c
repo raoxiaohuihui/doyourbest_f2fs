@@ -13,7 +13,7 @@ int f2fs_dedupe_calc_hash(struct page *p, u8 hash[], struct dedupe_info *dedupe_
 {
 	//int i;
 	int ret;
-	
+
 	struct {
 		struct shash_desc desc;
 		char ctx[dedupe_info->crypto_shash_descsize];
@@ -184,7 +184,7 @@ int f2fs_dedupe_add(u8 hash[], struct dedupe_info *dedupe_info, block_t addr)
 
 	INIT_LIST_HEAD(summary_list_head);
 
-	
+
 	struct dedupe* cur = &dedupe_info->dedupe_md[(*(unsigned int *)hash)%(dedupe_info->dedupe_block_count/64) * DEDUPE_PER_BLOCK* 64];
 #ifdef F2FS_NO_HASH
 	cur = dedupe_info->dedupe_md;
@@ -215,9 +215,9 @@ int f2fs_dedupe_add(u8 hash[], struct dedupe_info *dedupe_info, block_t addr)
 #endif
 		cur->addr = addr;
 		cur->ref = 1;
-		cur->summary_list_head = summary_list_head;
+		//cur->summary_list_head = summary_list_head;
 		memcpy(cur->hash, hash, dedupe_info->digest_len);
-		
+
 #ifdef F2FS_BLOOM_FILTER
 				pos = (unsigned int *)cur->hash;
 				for(i=0;i<dedupe_info->bloom_filter_hash_fun_count;i++)

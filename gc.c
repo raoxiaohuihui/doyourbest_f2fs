@@ -794,6 +794,42 @@ next_step:
 }
 
 
+//修改被dedupe的块关联的inode所指向的块地址
+int modifyDedupedPageInode(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,block_t *new_blkaddr)
+{
+	struct super_block *sb = sbi->sb;
+	struct page *node_page;
+	nid_t nid;
+	unsigned int ofs_in_node;
+
+	struct dnode_of_data dn;
+	struct inode *inode;
+	struct node_info dni; /* dnode info for the data */
+
+	nid = le32_to_cpu(sum->nid);
+	ofs_in_node = le16_to_cpu(sum->ofs_in_node);
+	node_page = get_node_page(sbi, nid);
+    if (IS_ERR(node_page)){
+		return 0;
+    }
+	get_node_info(sbi, nid, &dni);
+    inode = f2fs_iget(sb, dni.ino);
+    if (IS_ERR(inode) || is_bad_inode(inode))
+    {
+        printk("inode error");
+        return 0;
+    }
+
+	set_new_dnode(&dn, inode, NULL, NULL, 0);
+    dn.data_blkaddr =  *new_blkaddr;
+	set_data_blkaddr(&dn);
+	f2fs_update_extent_cache(&dn);
+    set_inode_flag(F2FS_I(inode), FI_APPEND_WRITE);
+	//start_bidx = start_bidx_of_node(nofs, F2FS_I(inode));
+	//data_page = get_read_data_page(inode,start_bidx + ofs_in_node, READA, true);
+    return 1;
+}
+
 static int gc_data_segment_dedupe(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,
 		struct gc_inode_list *gc_list, unsigned int segno, int gc_type)
 {
@@ -805,14 +841,15 @@ static int gc_data_segment_dedupe(struct f2fs_sb_info *sbi, struct f2fs_summary 
 	int phase = 0;
 	u8 hash[16];
 	struct dedupe* dedupe = NULL;
-    struct summary_table_row summary_table[SUMMARY_TABLE_SIZE] = sbi->dedupe_info.summary_table;
-    struct f2fs_summary *sum_temp;
+    struct summary_table_row *summary_table = NULL;
+    struct f2fs_summary sum_temp;
     block_t *new_blkaddr = NULL;
 	//struct list_head  *summary_list_head;
 	//struct summary_list_node* tmp = NULL;
 	//struct list_head* pos = NULL;
 
 
+    summary_table = sbi->dedupe_info.summary_table;
 	start_addr = START_BLOCK(sbi, segno);
 
 next_step:
@@ -900,12 +937,14 @@ next_step:
                     }
                     for(sum_col = 0;sum_col < SUMMARY_TABLE_SIZE;sum_col++)
                     {
-		                if(unlikely(dedupe->ref && !memcmp(summary_table[sum_col].hash, dedupe->hash, sbi->dedupe_info.digest_len)))
+		                if(dedupe->ref && !memcmp(summary_table[sum_col].hash, dedupe->hash, sbi->dedupe_info.digest_len))
                         {
-                            sum_temp->nid = summary_table[sum_col].nid;
-                            sum_temp->ofs_in_node = summary_table[sum_col].ofs_in_node;
-                            sum_temp->version = sum->version;
-                            modifyDedupedPageInode(sbi,sum_temp,new_blkaddr);
+                            sum_temp.nid = summary_table[sum_col].nid;
+                            sum_temp.ofs_in_node = summary_table[sum_col].ofs_in_node;
+                            sum_temp.version = sum->version;
+                            if(modifyDedupedPageInode(sbi,&sum_temp,new_blkaddr)){
+                                summary_table[sum_col].flag = 0;
+                            }
 
                         }
 
@@ -929,41 +968,6 @@ next_step:
 	return 0;
 }
 
-//修改被dedupe的块关联的inode所指向的块地址
-int modifyDedupedPageInode(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,block_t *new_blkaddr)
-{
-	struct super_block *sb = sbi->sb;
-	struct page *node_page;
-	nid_t nid;
-	unsigned int ofs_in_node;
-
-	struct dnode_of_data dn;
-	struct inode *inode;
-	struct node_info dni; /* dnode info for the data */
-
-	nid = le32_to_cpu(sum->nid);
-	ofs_in_node = le16_to_cpu(sum->ofs_in_node);
-	node_page = get_node_page(sbi, nid);
-    if (IS_ERR(node_page)){
-		return 0;
-    }
-	get_node_info(sbi, nid, &dni);
-    inode = f2fs_iget(sb, dni.ino);
-    if (IS_ERR(inode) || is_bad_inode(inode))
-    {
-        printk("inode error");
-        return 0;
-    }
-
-	set_new_dnode(&dn, inode, NULL, NULL, 0);
-    dn.data_blkaddr =  *new_blkaddr;
-	set_data_blkaddr(&dn);
-	f2fs_update_extent_cache(&dn);
-    set_inode_flag(F2FS_I(inode), FI_APPEND_WRITE);
-	//start_bidx = start_bidx_of_node(nofs, F2FS_I(inode));
-	//data_page = get_read_data_page(inode,start_bidx + ofs_in_node, READA, true);
-    return 1;
-}
 static int __get_victim(struct f2fs_sb_info *sbi, unsigned int *victim,
 			int gc_type)
 {
